@@ -2,7 +2,7 @@
 
 export interface RealtimeMessage {
   type: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface RealtimeConfig {
@@ -13,12 +13,14 @@ export interface RealtimeConfig {
   maxTokens?: number;
 }
 
+type EventCallback = (data: unknown) => void;
+
 export class RealtimeClient {
   private ws: WebSocket | null = null;
   private config: RealtimeConfig;
   private isConnected = false;
   private messageQueue: RealtimeMessage[] = [];
-  private listeners = new Map<string, Set<Function>>();
+  private listeners = new Map<string, Set<EventCallback>>();
 
   constructor(config: RealtimeConfig) {
     this.config = {
@@ -146,7 +148,7 @@ export class RealtimeClient {
   }
 
   // Function calling
-  addFunction(name: string, description: string, parameters: any): void {
+  addFunction(name: string, description: string, parameters: Record<string, unknown>): void {
     this.send({
       type: 'session.update',
       session: {
@@ -163,21 +165,21 @@ export class RealtimeClient {
   }
 
   // Event handling
-  on(event: string, callback: Function): void {
+  on(event: string, callback: EventCallback): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(callback);
   }
 
-  off(event: string, callback: Function): void {
+  off(event: string, callback: EventCallback): void {
     const eventListeners = this.listeners.get(event);
     if (eventListeners) {
       eventListeners.delete(callback);
     }
   }
 
-  private emit(event: string, data: any): void {
+  private emit(event: string, data: unknown): void {
     const eventListeners = this.listeners.get(event);
     if (eventListeners) {
       eventListeners.forEach((callback) => callback(data));
