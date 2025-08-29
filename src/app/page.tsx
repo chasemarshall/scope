@@ -630,7 +630,6 @@ export default function Page() {
                 )}
               </div>
             )}
-          )}
 
             <div className="mt-3 text-[11px] text-neutral-500 text-center">
               AI can make mistakes — Validate important info.
