@@ -12,7 +12,10 @@ import {
   Search as SearchIcon,
   Check,
   Brain,
+  Settings,
 } from "lucide-react";
+import SettingsModal from "@/components/SettingsModal";
+import VoiceChat from "@/components/VoiceChat";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -63,6 +66,9 @@ export default function Page() {
   const [webSearch, setWebSearch] = useState(false);
   const [thinkHarder, setThinkHarder] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [openaiKey, setOpenaiKey] = useState("");
 
   // sidebar
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -85,12 +91,85 @@ export default function Page() {
     };
   }, [micActive]);
 
-  // threads (stub)
-  const [threads, setThreads] = useState<string[]>([
-    "Project notes",
-    "Ideas",
-    "Untitled chat",
-  ]);
+  // conversation management
+  const [conversations, setConversations] = useState<Array<{ id: string; title: string; updatedAt: Date }>>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+
+  // Load conversations and settings on mount
+  useEffect(() => {
+    loadConversations();
+    loadOpenAIKey();
+  }, []);
+
+  const loadOpenAIKey = async () => {
+    try {
+      const response = await fetch('/api/settings/openai-key');
+      if (response.ok) {
+        const data = await response.json();
+        setOpenaiKey(data.value || "");
+      }
+    } catch (error) {
+      console.error('Failed to load OpenAI key:', error);
+    }
+  };
+
+  const loadConversations = async () => {
+    try {
+      const response = await fetch('/api/conversations');
+      if (response.ok) {
+        const data = await response.json();
+        setConversations(data);
+      }
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    }
+  };
+
+  const createNewConversation = async (title = "New Chat") => {
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      
+      if (response.ok) {
+        const newConversation = await response.json();
+        setConversations(prev => [newConversation, ...prev]);
+        setCurrentConversationId(newConversation.id);
+        setMsgs([]);
+        return newConversation.id;
+      }
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+    return null;
+  };
+
+  const loadConversation = async (conversationId: string) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`);
+      if (response.ok) {
+        const { messages } = await response.json();
+        setMsgs(messages);
+        setCurrentConversationId(conversationId);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  const saveMessage = async (conversationId: string, role: 'user' | 'assistant', content: string) => {
+    try {
+      await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, content }),
+      });
+    } catch (error) {
+      console.error('Failed to save message:', error);
+    }
+  };
 
   // scrolling
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -134,14 +213,21 @@ export default function Page() {
     const text = input.trim();
     if (!text || loading) return;
 
-    if (threads.length === 0) setThreads(["New chat"]);
-    if (threads[0] === "Untitled chat")
-      setThreads((t) => [text.slice(0, 32), ...t.slice(1)]);
+    let conversationId = currentConversationId;
+    
+    // Create new conversation if none exists
+    if (!conversationId) {
+      conversationId = await createNewConversation(text.slice(0, 32));
+      if (!conversationId) return;
+    }
 
     const next: ChatMessage[] = [...msgs, { role: "user", content: text }];
     setMsgs(next);
     setInput("");
     setLoading(true);
+
+    // Save user message to database
+    await saveMessage(conversationId, "user", text);
 
     try {
       const res = await fetch("/api/chat", {
@@ -165,6 +251,11 @@ export default function Page() {
       }
       // Final update to ensure complete content
       updateLastMessage(acc);
+      
+      // Save assistant message to database
+      if (conversationId && acc) {
+        await saveMessage(conversationId, "assistant", acc);
+      }
     } catch (e) {
       setMsgs((p) => [
         ...p,
@@ -173,7 +264,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, msgs, threads, webSearch, thinkHarder, updateLastMessage]);
+  }, [input, loading, msgs, conversations, webSearch, thinkHarder, updateLastMessage]);
 
   /** Start/stop mic and transcribe with whisper-1 via /api/transcribe */
   async function toggleMic() {
@@ -246,11 +337,14 @@ export default function Page() {
       <aside className="h-full border-r border-[rgb(var(--border))] bg-[rgb(var(--panel))] overflow-hidden">
         {/* Header */}
         <div className="h-14 flex items-center gap-2 px-2 sm:px-3 border-b border-[rgb(var(--border))]">
-          <div className="size-7 rounded-xl bg-white/5 grid place-items-center ml-1">
-            <Orbit size={16} />
-          </div>
-
-          {sidebarOpen && <div className="font-medium tracking-tight ml-1">Scope</div>}
+          {sidebarOpen ? (
+            <>
+              <div className="size-7 rounded-xl bg-white/5 grid place-items-center ml-1">
+                <Orbit size={16} />
+              </div>
+              <div className="font-medium tracking-tight ml-1">Scope</div>
+            </>
+          ) : null}
 
           {/* Collapse/Expand control */}
           <button
@@ -259,10 +353,9 @@ export default function Page() {
             title={sidebarOpen ? "Collapse" : "Expand"}
           >
             {sidebarOpen ? (
-              // When open: show the "close" control
               <PanelRightClose size={16} />
             ) : (
-              // When collapsed: show ONE icon — logo, which swaps to "open" on hover
+              // When collapsed: show logo that swaps to "open" icon on hover
               <span className="relative block w-4 h-4">
                 <Orbit
                   size={16}
@@ -279,10 +372,11 @@ export default function Page() {
 
         {/* Body */}
         {sidebarOpen ? (
-          <div className="p-3 space-y-2">
+          <div className="flex flex-col h-[calc(100%-56px)]">
+            <div className="p-3 space-y-2">
             <button
               className="w-full flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-[rgb(var(--border))] hover:bg-white/5 transition"
-              onClick={() => setThreads((t) => ["Untitled chat", ...t])}
+              onClick={() => createNewConversation()}
             >
               <Plus size={16} /> New chat
             </button>
@@ -290,18 +384,36 @@ export default function Page() {
               <SearchIcon size={16} /> Search
             </button>
 
-            <div className="pt-2">
+            <div className="pt-2 flex-1 overflow-hidden">
               <div className="text-xs uppercase text-neutral-500 px-2 mb-2">Chats</div>
-              <nav className="space-y-1 pr-1">
-                {threads.map((t, i) => (
+              <nav className="space-y-1 pr-1 overflow-y-auto h-full">
+                {conversations.map((conversation) => (
                   <button
-                    key={i}
-                    className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-[rgb(var(--border))] truncate"
+                    key={conversation.id}
+                    onClick={() => loadConversation(conversation.id)}
+                    className={`w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-white/5 border truncate ${
+                      currentConversationId === conversation.id
+                        ? 'bg-white/5 border-[rgb(var(--border))]'
+                        : 'border-transparent hover:border-[rgb(var(--border))]'
+                    }`}
                   >
-                    {t}
+                    {conversation.title}
                   </button>
                 ))}
               </nav>
+            </div>
+            </div>
+
+            {/* Settings button at bottom */}
+            <div className="p-3 pt-0">
+              <button
+                onClick={() => setShowSettings(true)}
+                className="w-full flex items-center gap-2 text-sm px-3 py-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-[rgb(var(--border))] transition"
+                title="Settings"
+              >
+                <Settings size={16} />
+                <span>Settings</span>
+              </button>
             </div>
           </div>
         ) : (
@@ -309,13 +421,20 @@ export default function Page() {
           <div className="py-3 grid gap-2 justify-items-center" style={{ width: 64 }}>
             <button
               title="New chat"
-              onClick={() => setThreads((t) => ["Untitled chat", ...t])}
+              onClick={() => createNewConversation()}
               className="size-10 rounded-lg grid place-items-center hover:bg-white/5"
             >
               <Edit3 size={16} />
             </button>
             <button title="Search" className="size-10 rounded-lg grid place-items-center hover:bg-white/5">
               <SearchIcon size={16} />
+            </button>
+            <button 
+              title="Settings"
+              onClick={() => setShowSettings(true)}
+              className="size-10 rounded-lg grid place-items-center hover:bg-white/5"
+            >
+              <Settings size={16} />
             </button>
           </div>
         )}
@@ -324,8 +443,24 @@ export default function Page() {
       {/* Main */}
       <section className="h-full bg-[rgb(var(--panel-2))] flex flex-col">
         {/* Header */}
-        <header className="h-14 px-4 flex items-center">
+        <header className="h-14 px-4 flex items-center justify-between">
           <div className="font-medium tracking-tight">Chat</div>
+          
+          {/* Voice Mode Toggle */}
+          {openaiKey && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setVoiceMode(!voiceMode)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                  voiceMode
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-neutral-700 hover:bg-neutral-600 text-neutral-200'
+                }`}
+              >
+                {voiceMode ? 'Voice Mode' : 'Text Mode'}
+              </button>
+            </div>
+          )}
         </header>
 
         {/* Messages */}
@@ -354,6 +489,28 @@ export default function Page() {
         {/* Composer (floating) */}
         <div className="pointer-events-none relative">
           <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4 pb-5">
+            
+            {/* Voice Chat Mode */}
+            {voiceMode && openaiKey && (
+              <div className="mb-4 flex justify-center">
+                <div className="bg-neutral-900/70 border border-[rgb(var(--border))] rounded-2xl p-4 shadow-lg">
+                  <VoiceChat
+                    apiKey={openaiKey}
+                    onTranscript={(text, isFinal) => {
+                      if (isFinal) {
+                        setInput((prev) => prev + text + ' ');
+                      }
+                    }}
+                    onError={(error) => {
+                      console.error('Voice chat error:', error);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          
+          {/* Text Composer */}
+          {!voiceMode && (
             <div
               className={[
                 "flex items-center gap-2 border border-[rgb(var(--border))] bg-neutral-900/70 p-2 shadow-lg",
@@ -477,9 +634,13 @@ export default function Page() {
             <div className="mt-3 text-[11px] text-neutral-500 text-center">
               AI can make mistakes — Validate important info.
             </div>
+            )}
           </div>
         </div>
       </section>
+
+      {/* Settings Modal */}
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }
