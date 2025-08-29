@@ -256,7 +256,7 @@ export default function Page() {
       if (conversationId && acc) {
         await saveMessage(conversationId, "assistant", acc);
       }
-    } catch (e) {
+    } catch (_e) {
       setMsgs((p) => [
         ...p,
         { role: "assistant", content: "⚠️ Connection lost. Please try again." },
@@ -264,7 +264,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, msgs, conversations, webSearch, thinkHarder, updateLastMessage]);
+  }, [input, loading, msgs, conversations, webSearch, thinkHarder, updateLastMessage, currentConversationId, createNewConversation, saveMessage]);
 
   /** Start/stop mic and transcribe with whisper-1 via /api/transcribe */
   async function toggleMic() {

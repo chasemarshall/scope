@@ -22,7 +22,7 @@ export const db = drizzle(sqlite, {
 // Auto-migrate on import
 try {
   migrate(db, { migrationsFolder: './drizzle' });
-} catch (error) {
+} catch (_error) {
   // Migrations folder might not exist yet, that's ok
   console.log('Migrations not found, database will be created on first use');
 }

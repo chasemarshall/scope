@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Volume2, VolumeX, Headphones } from "lucide-react";
+import { Mic, MicOff, Volume2, Headphones } from "lucide-react";
 import { RealtimeClient, type RealtimeConfig } from "@/lib/realtime/client";
 
 interface VoiceChatProps {
@@ -10,8 +10,31 @@ interface VoiceChatProps {
   onError?: (error: string) => void;
 }
 
+interface RealtimeSessionData {
+  session_id?: string;
+  [key: string]: unknown;
+}
+
+interface RealtimeTranscriptData {
+  transcript: string;
+  [key: string]: unknown;
+}
+
+interface RealtimeAudioDeltaData {
+  delta: string;
+  [key: string]: unknown;
+}
+
+interface RealtimeErrorData {
+  error?: {
+    message: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 export default function VoiceChat({ apiKey, onTranscript, onError }: VoiceChatProps) {
-  const [isConnected, setIsConnected] = useState(false);
+  const [_isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
@@ -35,47 +58,47 @@ export default function VoiceChat({ apiKey, onTranscript, onError }: VoiceChatPr
     realtimeClient.current = new RealtimeClient(config);
 
     // Set up event listeners
-    realtimeClient.current.on('session.created', (data: any) => {
+    realtimeClient.current.on('session.created', (data: RealtimeSessionData) => {
       console.log('Realtime session created:', data);
       setIsConnected(true);
       setConnectionStatus('connected');
     });
 
-    realtimeClient.current.on('input_audio_buffer.speech_started', (data: any) => {
+    realtimeClient.current.on('input_audio_buffer.speech_started', (_data: unknown) => {
       console.log('Speech detected');
       setIsListening(true);
     });
 
-    realtimeClient.current.on('input_audio_buffer.speech_stopped', (data: any) => {
+    realtimeClient.current.on('input_audio_buffer.speech_stopped', (_data: unknown) => {
       console.log('Speech ended');
       setIsListening(false);
     });
 
-    realtimeClient.current.on('conversation.item.input_audio_transcription.completed', (data: any) => {
+    realtimeClient.current.on('conversation.item.input_audio_transcription.completed', (data: RealtimeTranscriptData) => {
       console.log('User transcript:', data.transcript);
       onTranscript?.(data.transcript, true);
     });
 
-    realtimeClient.current.on('response.audio.delta', (data: any) => {
+    realtimeClient.current.on('response.audio.delta', (data: RealtimeAudioDeltaData) => {
       // Play audio response chunks
       if (data.delta) {
         playAudioChunk(data.delta);
       }
     });
 
-    realtimeClient.current.on('response.audio_transcript.delta', (data: any) => {
+    realtimeClient.current.on('response.audio_transcript.delta', (data: RealtimeAudioDeltaData) => {
       // Show assistant's speech as it's being generated
       if (data.delta) {
         onTranscript?.(data.delta, false);
       }
     });
 
-    realtimeClient.current.on('response.audio_transcript.done', (data: any) => {
+    realtimeClient.current.on('response.audio_transcript.done', (data: RealtimeTranscriptData) => {
       // Final assistant transcript
       onTranscript?.(data.transcript, true);
     });
 
-    realtimeClient.current.on('error', (data: any) => {
+    realtimeClient.current.on('error', (data: RealtimeErrorData) => {
       console.error('Realtime API error:', data);
       onError?.(data.error?.message || 'Unknown error');
       setConnectionStatus('disconnected');
@@ -91,7 +114,7 @@ export default function VoiceChat({ apiKey, onTranscript, onError }: VoiceChatPr
       realtimeClient.current?.disconnect();
       cleanup();
     };
-  }, [apiKey, onTranscript, onError]);
+  }, [apiKey, onTranscript, onError, cleanup]);
 
   const cleanup = useCallback(() => {
     if (mediaRecorder.current) {
