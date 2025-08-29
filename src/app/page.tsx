@@ -1,24 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Orbit,
   Plus,
   Send,
   Mic,
-  Search as SearchIcon,
   PanelRightOpen,
   PanelRightClose,
   Edit3,
-  BookOpen,
+  Search as SearchIcon,
   Check,
   Brain,
 } from "lucide-react";
 
-type Msg = { role: "user" | "assistant"; content: string };
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
-/** SSE line parser for OpenAI chat streams */
-async function* parseSSEStream(stream: ReadableStream<Uint8Array>) {
+interface TranscriptionResponse {
+  text: string;
+}
+
+/** SSE line parser for OpenAI chat streams (choices[].delta.content) */
+async function* parseSSEStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<string, void, unknown> {
   const reader = stream.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
@@ -26,10 +32,12 @@ async function* parseSSEStream(stream: ReadableStream<Uint8Array>) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
+
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
       const chunk = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 2);
+
       for (const line of chunk.split("\n")) {
         const s = line.trim();
         if (!s.startsWith("data:")) continue;
@@ -46,31 +54,54 @@ async function* parseSSEStream(stream: ReadableStream<Uint8Array>) {
 }
 
 export default function Page() {
-  // chat state
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  // Chat & UI state
+  const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // UI state
+  // feature flags moved under the "+" popover
   const [webSearch, setWebSearch] = useState(false);
   const [thinkHarder, setThinkHarder] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
+
+  // sidebar
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // chat history (stubbed)
+  // mic state (client-side recorder → /api/transcribe)
+  const [micActive, setMicActive] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+
+  // Cleanup MediaRecorder and audio stream on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && micActive) {
+        mediaRecorderRef.current.stop();
+      }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [micActive]);
+
+  // threads (stub)
   const [threads, setThreads] = useState<string[]>([
     "Project notes",
     "Ideas",
     "Untitled chat",
   ]);
 
-  // autoscroll
+  // scrolling
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [msgs]);
 
-  // textarea auto-grow + morph (pill → rounded rectangle after >2 lines)
+  // textarea auto-grow + morph pill → rounded rectangle after >2 lines
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const [isTall, setIsTall] = useState(false);
   useEffect(() => {
@@ -78,25 +109,36 @@ export default function Page() {
     if (!el) return;
     const lineHeight = 24; // px
     el.style.height = "0px";
-    const next = Math.min(el.scrollHeight, 240); // cap ~ 8–9 lines
+    const next = Math.min(el.scrollHeight, 240); // cap height ~ 8–9 lines
     el.style.height = next + "px";
-    setIsTall(next > lineHeight * 2 + 6); // only after >2 lines
+    setIsTall(next > lineHeight * 2 + 6); // switch only after >2 lines
   }, [input]);
 
-  // layout columns
+  // layout columns (fixed width rail when collapsed)
   const gridCols = useMemo(
     () => (sidebarOpen ? "280px 1fr" : "64px 1fr"),
     [sidebarOpen]
   );
 
-  async function onSend() {
+  /** Optimized message update for streaming */
+  const updateLastMessage = useCallback((content: string) => {
+    setMsgs((p) => {
+      const updated = [...p];
+      updated[updated.length - 1] = { role: "assistant", content };
+      return updated;
+    });
+  }, []);
+
+  /** Send a text message to our streaming endpoint */
+  const onSend = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
 
     if (threads.length === 0) setThreads(["New chat"]);
-    if (threads[0] === "Untitled chat") setThreads((t) => [text.slice(0, 32), ...t.slice(1)]);
+    if (threads[0] === "Untitled chat")
+      setThreads((t) => [text.slice(0, 32), ...t.slice(1)]);
 
-    const next: Msg[] = [...msgs, { role: "user", content: text }];
+    const next: ChatMessage[] = [...msgs, { role: "user", content: text }];
     setMsgs(next);
     setInput("");
     setLoading(true);
@@ -108,27 +150,86 @@ export default function Page() {
       });
       if (!res.ok || !res.body) throw new Error("No stream");
 
-      setMsgs((prev) => [...prev, { role: "assistant", content: "" }]);
+      setMsgs((p) => [...p, { role: "assistant", content: "" }]);
       let acc = "";
+      let lastUpdateTime = Date.now();
+      
       for await (const tok of parseSSEStream(res.body)) {
         acc += tok;
-        setMsgs((prev) => {
-          const copy = [...prev];
-          copy[copy.length - 1] = { role: "assistant", content: acc };
-          return copy;
-        });
+        const now = Date.now();
+        // Throttle updates to every 16ms (60fps) or when complete
+        if (now - lastUpdateTime > 16) {
+          updateLastMessage(acc);
+          lastUpdateTime = now;
+        }
       }
-    } catch {
-      setMsgs((prev) => [
-        ...prev,
-        { role: "assistant", content: "⚠️ Streaming failed. Try again." },
+      // Final update to ensure complete content
+      updateLastMessage(acc);
+    } catch (e) {
+      setMsgs((p) => [
+        ...p,
+        { role: "assistant", content: "⚠️ Connection lost. Please try again." },
       ]);
     } finally {
       setLoading(false);
     }
+  }, [input, loading, msgs, threads, webSearch, thinkHarder, updateLastMessage]);
+
+  /** Start/stop mic and transcribe with whisper-1 via /api/transcribe */
+  async function toggleMic() {
+    if (micActive) {
+      mediaRecorderRef.current?.stop();
+      setMicActive(false);
+      return;
+    }
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      audioChunksRef.current = [];
+
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      
+      mr.onstop = async () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const form = new FormData();
+        form.append("file", blob, "speech.webm");
+
+        try {
+          const res = await fetch("/api/transcribe", { method: "POST", body: form });
+          if (res.ok) {
+            const { text }: TranscriptionResponse = await res.json();
+            if (text && text.trim()) {
+              setInput((prev) => (prev ? prev + " " + text : text));
+            }
+          } else {
+            console.error("Transcription failed with status:", res.status);
+          }
+        } catch (error) {
+          console.error("Transcription request failed:", error);
+        }
+        
+        // Clean up stream and refs
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach((t) => t.stop());
+          audioStreamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+      };
+
+      mr.start(250);
+      mediaRecorderRef.current = mr;
+      setMicActive(true);
+    } catch (error) {
+      console.error("Failed to start microphone:", error);
+      setMicActive(false);
+    }
   }
 
-  // menu close on outside click
+  // close + menu when clicking outside
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -158,10 +259,10 @@ export default function Page() {
             title={sidebarOpen ? "Collapse" : "Expand"}
           >
             {sidebarOpen ? (
-              // OPEN → show "close" control
+              // When open: show the "close" control
               <PanelRightClose size={16} />
             ) : (
-              // COLLAPSED → show single icon; on hover swap to "open" icon (overlayed)
+              // When collapsed: show ONE icon — logo, which swaps to "open" on hover
               <span className="relative block w-4 h-4">
                 <Orbit
                   size={16}
@@ -204,7 +305,7 @@ export default function Page() {
             </div>
           </div>
         ) : (
-          // collapsed icon rail
+          // collapsed icon rail (fixed 64px; buttons won't squish)
           <div className="py-3 grid gap-2 justify-items-center" style={{ width: 64 }}>
             <button
               title="New chat"
@@ -212,9 +313,6 @@ export default function Page() {
               className="size-10 rounded-lg grid place-items-center hover:bg-white/5"
             >
               <Edit3 size={16} />
-            </button>
-            <button title="Library" className="size-10 rounded-lg grid place-items-center hover:bg-white/5">
-              <BookOpen size={16} />
             </button>
             <button title="Search" className="size-10 rounded-lg grid place-items-center hover:bg-white/5">
               <SearchIcon size={16} />
@@ -262,7 +360,7 @@ export default function Page() {
                 isTall ? "rounded-2xl" : "rounded-full",
               ].join(" ")}
             >
-              {/* Plus */}
+              {/* Plus + Popover (opens ABOVE the pill) */}
               <div className="relative">
                 <button
                   title="Add"
@@ -272,11 +370,10 @@ export default function Page() {
                   <Plus size={18} />
                 </button>
 
-                {/* Popover menu */}
                 {showPlusMenu && (
                   <div
                     ref={menuRef}
-                    className="absolute left-0 top-11 z-50 w-48 rounded-xl border border-[rgb(var(--border))] bg-neutral-900/95 backdrop-blur px-2 py-2 shadow-xl"
+                    className="absolute bottom-full left-0 mb-2 w-48 rounded-xl border border-[rgb(var(--border))] bg-neutral-900/95 backdrop-blur px-2 py-2 shadow-xl"
                   >
                     <div className="text-[11px] uppercase text-neutral-500 px-2 pb-1">Modes</div>
                     <button
@@ -319,41 +416,57 @@ export default function Page() {
                 disabled={loading}
                 className="flex-1 bg-transparent resize-none outline-none placeholder:text-neutral-500 py-2 px-1"
                 style={{ maxHeight: 240 }}
+                aria-label="Message input"
               />
 
-              {/* Mic (icon-only) */}
+              {/* Mic: records → /api/transcribe → inserts text */}
               <button
-                title="Voice input"
-                className="grid place-items-center size-9 rounded-full hover:bg-black/40 transition disabled:opacity-50"
-                disabled={loading}
+                title={micActive ? "Stop recording" : "Start recording"}
+                onClick={toggleMic}
+                className="grid place-items-center size-9 rounded-full hover:bg-black/40 transition"
+                aria-label={micActive ? "Stop recording" : "Start voice recording"}
+                aria-pressed={micActive}
               >
                 <Mic size={18} />
               </button>
 
-              {/* Send (circular) */}
+              {/* Send: circular */}
               <button
                 onClick={onSend}
                 disabled={loading || !input.trim()}
-                title="Send"
+                title="Send message"
                 className="grid place-items-center size-9 rounded-full border border-[rgb(var(--border))] bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                aria-label="Send message"
               >
                 <Send size={18} />
               </button>
             </div>
 
-            {/* Enabled badges (subtle blue, only for active modes) */}
+            {/* Active badges (subtle blue) */}
             {(webSearch || thinkHarder) && (
               <div className="mt-3 flex items-center gap-2">
                 {webSearch && (
-                  <span className="inline-flex items-center gap-2 h-8 rounded-full border px-3 text-xs"
-                        style={{ backgroundColor: "rgba(96, 165, 250, 0.12)", borderColor: "rgba(96, 165, 250, 0.35)", color: "rgb(191, 219, 254)" }}>
+                  <span
+                    className="inline-flex items-center gap-2 h-8 rounded-full border px-3 text-xs"
+                    style={{
+                      backgroundColor: "rgba(96, 165, 250, 0.12)",
+                      borderColor: "rgba(96, 165, 250, 0.35)",
+                      color: "rgb(191, 219, 254)",
+                    }}
+                  >
                     <SearchIcon size={16} />
                     Web search
                   </span>
                 )}
                 {thinkHarder && (
-                  <span className="inline-flex items-center gap-2 h-8 rounded-full border px-3 text-xs"
-                        style={{ backgroundColor: "rgba(96, 165, 250, 0.12)", borderColor: "rgba(96, 165, 250, 0.35)", color: "rgb(191, 219, 254)" }}>
+                  <span
+                    className="inline-flex items-center gap-2 h-8 rounded-full border px-3 text-xs"
+                    style={{
+                      backgroundColor: "rgba(96, 165, 250, 0.12)",
+                      borderColor: "rgba(96, 165, 250, 0.35)",
+                      color: "rgb(191, 219, 254)",
+                    }}
+                  >
                     <Brain size={16} />
                     Think harder
                   </span>
@@ -362,7 +475,7 @@ export default function Page() {
             )}
 
             <div className="mt-3 text-[11px] text-neutral-500 text-center">
-              Scope · minimal · OLED-dark · streaming
+              AI can make mistakes — Validate important info.
             </div>
           </div>
         </div>
