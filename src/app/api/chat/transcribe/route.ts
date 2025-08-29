@@ -1,4 +1,9 @@
 import { NextRequest } from "next/server";
+
+interface OpenAITranscriptionResponse {
+  text: string;
+}
+
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -15,13 +20,13 @@ export async function POST(req: NextRequest) {
   const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY!}` },
-    body: upstream as any,
+    body: upstream,
   });
 
   if (!r.ok) {
     const t = await r.text();
     return new Response(t, { status: r.status });
   }
-  const data = await r.json();
+  const data = await r.json() as OpenAITranscriptionResponse;
   return Response.json({ text: data.text ?? "" });
 }
