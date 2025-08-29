@@ -598,9 +598,10 @@ export default function Page() {
                 <Send size={18} />
               </button>
             </div>
+          )}
 
-            {/* Active badges (subtle blue) */}
-            {(webSearch || thinkHarder) && (
+          {/* Active badges (subtle blue) */}
+          {(webSearch || thinkHarder) && (
               <div className="mt-3 flex items-center gap-2">
                 {webSearch && (
                   <span
