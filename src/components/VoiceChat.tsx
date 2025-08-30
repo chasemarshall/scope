@@ -120,7 +120,7 @@ export default function VoiceChat({ apiKey, onTranscript, onError }: VoiceChatPr
       realtimeClient.current?.disconnect();
       cleanup();
     };
-  }, [apiKey, onTranscript, onError, cleanup]);
+  }, [apiKey, onTranscript, onError]);
 
   const cleanup = useCallback(() => {
     if (mediaRecorder.current) {
