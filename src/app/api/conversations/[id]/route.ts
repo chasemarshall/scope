@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatService } from '@/lib/db/queries';
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const conversation = await ChatService.getConversation(params.id);
+    const { id } = await params;
+    const conversation = await ChatService.getConversation(id);
     
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    const messages = await ChatService.getMessages(params.id);
+    const messages = await ChatService.getMessages(id);
     
     return NextResponse.json({
       conversation,
@@ -21,15 +22,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { title } = await req.json();
     
     if (!title || typeof title !== 'string') {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
 
-    await ChatService.updateConversationTitle(params.id, title);
+    await ChatService.updateConversationTitle(id, title);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating conversation:', error);
@@ -37,9 +39,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await ChatService.deleteConversation(params.id);
+    const { id } = await params;
+    await ChatService.deleteConversation(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting conversation:', error);

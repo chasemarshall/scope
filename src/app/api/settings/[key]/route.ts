@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatService } from '@/lib/db/queries';
 
-export async function GET(req: NextRequest, { params }: { params: { key: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   try {
-    const value = await ChatService.getSetting(params.key);
+    const { key } = await params;
+    const value = await ChatService.getSetting(key);
     return NextResponse.json({ value });
   } catch (error) {
     console.error('Error fetching setting:', error);
@@ -11,8 +12,9 @@ export async function GET(req: NextRequest, { params }: { params: { key: string 
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { key: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ key: string }> }) {
   try {
+    const { key } = await params;
     const { value } = await req.json();
     
     if (typeof value !== 'string') {
@@ -20,9 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: { key: string
     }
 
     if (value.trim()) {
-      await ChatService.setSetting(params.key, value);
+      await ChatService.setSetting(key, value);
     } else {
-      await ChatService.deleteSetting(params.key);
+      await ChatService.deleteSetting(key);
     }
     
     return NextResponse.json({ success: true });
