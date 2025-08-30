@@ -58,8 +58,9 @@ export default function VoiceChat({ apiKey, onTranscript, onError }: VoiceChatPr
     realtimeClient.current = new RealtimeClient(config);
 
     // Set up event listeners
-    realtimeClient.current.on('session.created', (data: RealtimeSessionData) => {
-      console.log('Realtime session created:', data);
+    realtimeClient.current.on('session.created', (data: unknown) => {
+      const sessionData = data as RealtimeSessionData;
+      console.log('Realtime session created:', sessionData);
       setIsConnected(true);
       setConnectionStatus('connected');
     });
@@ -74,33 +75,38 @@ export default function VoiceChat({ apiKey, onTranscript, onError }: VoiceChatPr
       setIsListening(false);
     });
 
-    realtimeClient.current.on('conversation.item.input_audio_transcription.completed', (data: RealtimeTranscriptData) => {
-      console.log('User transcript:', data.transcript);
-      onTranscript?.(data.transcript, true);
+    realtimeClient.current.on('conversation.item.input_audio_transcription.completed', (data: unknown) => {
+      const transcriptData = data as RealtimeTranscriptData;
+      console.log('User transcript:', transcriptData.transcript);
+      onTranscript?.(transcriptData.transcript, true);
     });
 
-    realtimeClient.current.on('response.audio.delta', (data: RealtimeAudioDeltaData) => {
+    realtimeClient.current.on('response.audio.delta', (data: unknown) => {
+      const audioData = data as RealtimeAudioDeltaData;
       // Play audio response chunks
-      if (data.delta) {
-        playAudioChunk(data.delta);
+      if (audioData.delta) {
+        playAudioChunk(audioData.delta);
       }
     });
 
-    realtimeClient.current.on('response.audio_transcript.delta', (data: RealtimeAudioDeltaData) => {
+    realtimeClient.current.on('response.audio_transcript.delta', (data: unknown) => {
+      const audioData = data as RealtimeAudioDeltaData;
       // Show assistant's speech as it's being generated
-      if (data.delta) {
-        onTranscript?.(data.delta, false);
+      if (audioData.delta) {
+        onTranscript?.(audioData.delta, false);
       }
     });
 
-    realtimeClient.current.on('response.audio_transcript.done', (data: RealtimeTranscriptData) => {
+    realtimeClient.current.on('response.audio_transcript.done', (data: unknown) => {
+      const transcriptData = data as RealtimeTranscriptData;
       // Final assistant transcript
-      onTranscript?.(data.transcript, true);
+      onTranscript?.(transcriptData.transcript, true);
     });
 
-    realtimeClient.current.on('error', (data: RealtimeErrorData) => {
-      console.error('Realtime API error:', data);
-      onError?.(data.error?.message || 'Unknown error');
+    realtimeClient.current.on('error', (data: unknown) => {
+      const errorData = data as RealtimeErrorData;
+      console.error('Realtime API error:', errorData);
+      onError?.(errorData.error?.message || 'Unknown error');
       setConnectionStatus('disconnected');
       setIsConnected(false);
     });
