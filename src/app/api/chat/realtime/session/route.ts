@@ -4,9 +4,25 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
+  // Get the API key from cookie or environment
+  let apiKey: string | null = null;
+  
+  // Try to get from cookie first
+  apiKey = req.cookies.get('setting_openai-key')?.value ?? null;
+  
+  // If no user key in cookie, fall back to environment variable
+  if (!apiKey) {
+    apiKey = process.env.OPENAI_API_KEY ?? null;
+  }
+
+  if (!apiKey) {
+    console.error("No OpenAI API key configured for realtime session");
+    return new Response("Service unavailable - no API key", { status: 503 });
+  }
+
   const body = {
-    // Your saved prompt “object” on the platform:
+    // Your saved prompt "object" on the platform:
     prompt: {
       id: "pmpt_68aea5a2d13c8195abe54996341335f203d676cc82abcf77",
       version: "1",
@@ -21,7 +37,7 @@ export async function POST(_req: NextRequest) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY!}`,
+      Authorization: `Bearer ${apiKey}`,
       "OpenAI-Beta": "realtime=v1",
     },
     body: JSON.stringify(body),

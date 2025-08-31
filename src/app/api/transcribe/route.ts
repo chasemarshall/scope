@@ -9,6 +9,22 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Get the API key from cookie or environment
+  let apiKey: string | null = null;
+  
+  // Try to get from cookie first
+  apiKey = req.cookies.get('setting_openai-key')?.value ?? null;
+  
+  // If no user key in cookie, fall back to environment variable
+  if (!apiKey) {
+    apiKey = process.env.OPENAI_API_KEY ?? null;
+  }
+
+  if (!apiKey) {
+    console.error("No OpenAI API key configured for transcription");
+    return new Response("Service unavailable - no API key", { status: 503 });
+  }
+
   const form = await req.formData();
   const file = form.get("file") as File | null;
   if (!file) return new Response("missing file", { status: 400 });
@@ -19,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY!}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     body: upstream,
   });
 
