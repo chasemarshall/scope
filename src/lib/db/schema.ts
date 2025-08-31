@@ -1,25 +1,25 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
-export const conversations = sqliteTable('conversations', {
+export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+  createdAt: timestamp('created_at').default(sql`now()`).notNull(),
+  updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
 });
 
-export const messages = sqliteTable('messages', {
+export const messages = pgTable('messages', {
   id: text('id').primaryKey(),
   conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
   role: text('role', { enum: ['user', 'assistant'] }).notNull(),
   content: text('content').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+  createdAt: timestamp('created_at').default(sql`now()`).notNull(),
 });
 
-export const settings = sqliteTable('settings', {
+export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+  updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
 });
 
 export type Conversation = typeof conversations.$inferSelect;

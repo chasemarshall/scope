@@ -1,5 +1,6 @@
 // src/app/api/transcribe/route.ts
 import { NextRequest } from "next/server";
+import { ChatService } from '@/lib/db/queries';
 
 interface OpenAITranscriptionResponse {
   text: string;
@@ -9,14 +10,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  // Get the API key from cookie or environment
+  // Get the API key from database or environment
   let apiKey: string | null = null;
   
-  // Try to get from cookie first
-  apiKey = req.cookies.get('setting_openai-key')?.value ?? null;
-  
-  // If no user key in cookie, fall back to environment variable
-  if (!apiKey) {
+  try {
+    apiKey = await ChatService.getSetting('openai-key');
+  } catch {
+    // If no user key stored, fall back to environment variable
     apiKey = process.env.OPENAI_API_KEY ?? null;
   }
 

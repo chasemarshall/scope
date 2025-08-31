@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ChatService } from '@/lib/db/queries';
 
 export const runtime = "nodejs";
 
@@ -16,15 +17,15 @@ interface OpenAIModelsResponse {
 
 export async function GET(req: NextRequest) {
   try {
-    // Get the API key from cookie or environment
+    // Get the API key from database or environment
     let apiKey: string | null = null;
     
-    // Try to get from cookie first
-    apiKey = req.cookies.get('setting_openai-key')?.value ?? null;
-    console.log('Retrieved API key from cookie:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null');
-    
-    // If no user key in cookie, fall back to environment variable
-    if (!apiKey) {
+    try {
+      apiKey = await ChatService.getSetting('openai-key');
+      console.log('Retrieved API key from database:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null');
+    } catch (error) {
+      console.log('Failed to get API key from database:', error);
+      // If no user key stored, fall back to environment variable
       apiKey = process.env.OPENAI_API_KEY ?? null;
       console.log('Using environment API key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null');
     }

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { ChatService } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 
@@ -17,14 +18,13 @@ type RequestBody = {
 };
 
 export async function POST(req: NextRequest) {
-  // Get the API key from cookie or environment
+  // Get the API key from database or environment
   let apiKey: string | null = null;
   
-  // Try to get from cookie first
-  apiKey = req.cookies.get('setting_openai-key')?.value ?? null;
-  
-  // If no user key in cookie, fall back to environment variable
-  if (!apiKey) {
+  try {
+    apiKey = await ChatService.getSetting('openai-key');
+  } catch {
+    // If no user key stored, fall back to environment variable
     apiKey = process.env.OPENAI_API_KEY ?? null;
   }
 
@@ -43,10 +43,14 @@ export async function POST(req: NextRequest) {
 
   const { messages, webSearch, thinkHarder, model } = body;
 
-  // Get selected model from request or cookie, with fallback to default
+  // Get selected model from request or database, with fallback to default
   let selectedModel = model;
   if (!selectedModel) {
-    selectedModel = req.cookies.get('setting_selected-model')?.value || DEFAULT_MODEL;
+    try {
+      selectedModel = await ChatService.getSetting('selected-model') || DEFAULT_MODEL;
+    } catch {
+      selectedModel = DEFAULT_MODEL;
+    }
   }
 
   if (!Array.isArray(messages)) {
