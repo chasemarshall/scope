@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     apiKey = await ChatService.getSetting('openai-key');
   } catch {
     // If no user key stored, fall back to environment variable
-    apiKey = process.env.OPENAI_API_KEY;
+    apiKey = process.env.OPENAI_API_KEY || null;
   }
 
   if (!apiKey) {
