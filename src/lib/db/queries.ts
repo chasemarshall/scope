@@ -1,120 +1,110 @@
-import { desc, eq } from 'drizzle-orm';
-import { db, conversations, messages, settings, type Conversation, type Message, type NewConversation, type NewMessage, type Setting } from './index';
 import { nanoid } from 'nanoid';
 
+// Temporary in-memory storage for development
+// In production, replace this with a proper database
+const storage = {
+  settings: new Map<string, string>(),
+  conversations: new Map<string, any>(),
+  messages: new Map<string, any[]>(),
+};
+
+export type Conversation = {
+  id: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type Message = {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: Date;
+};
+
 export class ChatService {
-  // Conversations
+  // Settings - simplified for now
+  static async getSetting(key: string): Promise<string | null> {
+    return storage.settings.get(key) || null;
+  }
+
+  static async setSetting(key: string, value: string): Promise<void> {
+    storage.settings.set(key, value);
+  }
+
+  static async deleteSetting(key: string): Promise<void> {
+    storage.settings.delete(key);
+  }
+
+  // Conversations - simplified for now
   static async createConversation(title: string): Promise<Conversation> {
     const id = nanoid();
-    const [conversation] = await db
-      .insert(conversations)
-      .values({
-        id,
-        title,
-      })
-      .returning();
+    const conversation = {
+      id,
+      title,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    storage.conversations.set(id, conversation);
     return conversation;
   }
 
   static async getConversations(): Promise<Conversation[]> {
-    return await db
-      .select()
-      .from(conversations)
-      .orderBy(desc(conversations.updatedAt));
+    return Array.from(storage.conversations.values()).sort((a, b) => 
+      b.updatedAt.getTime() - a.updatedAt.getTime()
+    );
   }
 
   static async getConversation(id: string): Promise<Conversation | undefined> {
-    const [conversation] = await db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, id))
-      .limit(1);
-    return conversation;
+    return storage.conversations.get(id);
   }
 
   static async updateConversationTitle(id: string, title: string): Promise<void> {
-    await db
-      .update(conversations)
-      .set({ 
-        title, 
-        updatedAt: new Date() 
-      })
-      .where(eq(conversations.id, id));
+    const conversation = storage.conversations.get(id);
+    if (conversation) {
+      conversation.title = title;
+      conversation.updatedAt = new Date();
+      storage.conversations.set(id, conversation);
+    }
   }
 
   static async deleteConversation(id: string): Promise<void> {
-    await db
-      .delete(conversations)
-      .where(eq(conversations.id, id));
+    storage.conversations.delete(id);
+    storage.messages.delete(id);
   }
 
-  // Messages
+  // Messages - simplified for now
   static async addMessage(conversationId: string, role: 'user' | 'assistant', content: string): Promise<Message> {
     const id = nanoid();
-    
-    // Update conversation's updatedAt timestamp
-    await db
-      .update(conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(conversations.id, conversationId));
+    const message = {
+      id,
+      conversationId,
+      role,
+      content,
+      createdAt: new Date(),
+    };
 
-    const [message] = await db
-      .insert(messages)
-      .values({
-        id,
-        conversationId,
-        role,
-        content,
-      })
-      .returning();
-    
+    if (!storage.messages.has(conversationId)) {
+      storage.messages.set(conversationId, []);
+    }
+    storage.messages.get(conversationId)!.push(message);
+
+    // Update conversation timestamp
+    const conversation = storage.conversations.get(conversationId);
+    if (conversation) {
+      conversation.updatedAt = new Date();
+      storage.conversations.set(conversationId, conversation);
+    }
+
     return message;
   }
 
   static async getMessages(conversationId: string): Promise<Message[]> {
-    return await db
-      .select()
-      .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(messages.createdAt);
+    return storage.messages.get(conversationId) || [];
   }
 
   static async deleteMessages(conversationId: string): Promise<void> {
-    await db
-      .delete(messages)
-      .where(eq(messages.conversationId, conversationId));
-  }
-
-  // Settings
-  static async getSetting(key: string): Promise<string | null> {
-    const [setting] = await db
-      .select()
-      .from(settings)
-      .where(eq(settings.key, key))
-      .limit(1);
-    return setting?.value ?? null;
-  }
-
-  static async setSetting(key: string, value: string): Promise<void> {
-    await db
-      .insert(settings)
-      .values({
-        key,
-        value,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: settings.key,
-        set: {
-          value,
-          updatedAt: new Date(),
-        },
-      });
-  }
-
-  static async deleteSetting(key: string): Promise<void> {
-    await db
-      .delete(settings)
-      .where(eq(settings.key, key));
+    storage.messages.delete(conversationId);
   }
 }
