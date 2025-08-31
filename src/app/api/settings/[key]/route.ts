@@ -17,14 +17,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
     const { key } = await params;
     const { value } = await req.json();
     
+    console.log(`Saving setting ${key}:`, value ? `${value.substring(0, 10)}...` : 'empty');
+    
     if (typeof value !== 'string') {
       return NextResponse.json({ error: 'Value must be a string' }, { status: 400 });
     }
 
     if (value.trim()) {
-      await ChatService.setSetting(key, value);
+      await ChatService.setSetting(key, value.trim());
+      console.log(`Setting ${key} saved successfully`);
     } else {
       await ChatService.deleteSetting(key);
+      console.log(`Setting ${key} deleted (empty value)`);
     }
     
     return NextResponse.json({ success: true });

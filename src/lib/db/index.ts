@@ -19,12 +19,42 @@ export const db = drizzle(sqlite, {
   },
 });
 
-// Auto-migrate on import
+// Initialize database tables if they don't exist
+try {
+  // Create tables manually since we might not have migrations
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch()) NOT NULL,
+      updated_at INTEGER DEFAULT (unixepoch()) NOT NULL
+    );
+    
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at INTEGER DEFAULT (unixepoch()) NOT NULL
+    );
+    
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER DEFAULT (unixepoch()) NOT NULL
+    );
+  `);
+  console.log('Database tables initialized');
+} catch (error) {
+  console.error('Failed to initialize database:', error);
+}
+
+// Try to migrate if migrations exist
 try {
   migrate(db, { migrationsFolder: './drizzle' });
 } catch (_error) {
   // Migrations folder might not exist yet, that's ok
-  console.log('Migrations not found, database will be created on first use');
+  console.log('No migrations to apply');
 }
 
 export * from './schema';

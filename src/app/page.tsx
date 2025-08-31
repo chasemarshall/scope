@@ -671,7 +671,15 @@ export default function Page() {
       </section>
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => {
+          setShowSettings(false);
+          // Reload settings after closing
+          loadOpenAIKey();
+          loadSelectedModel();
+        }} 
+      />
     </div>
   );
 }
