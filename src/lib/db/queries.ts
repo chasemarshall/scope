@@ -1,13 +1,5 @@
 import { nanoid } from 'nanoid';
 
-// Temporary in-memory storage for development
-// In production, replace this with a proper database
-const storage = {
-  settings: new Map<string, string>(),
-  conversations: new Map<string, any>(),
-  messages: new Map<string, any[]>(),
-};
-
 export type Conversation = {
   id: string;
   title: string;
@@ -21,6 +13,14 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   createdAt: Date;
+};
+
+// Temporary in-memory storage for development
+// In production, replace this with a proper database
+const storage = {
+  settings: new Map<string, string>(),
+  conversations: new Map<string, Conversation>(),
+  messages: new Map<string, Message[]>(),
 };
 
 export class ChatService {
