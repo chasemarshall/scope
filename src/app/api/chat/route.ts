@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
+import { ChatService } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 
-const MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-4o-mini";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -13,12 +14,22 @@ type RequestBody = {
   messages?: ChatMessage[];
   webSearch?: boolean;
   thinkHarder?: boolean;
+  model?: string;
 };
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  // Get the API key from settings or environment
+  let apiKey: string | null = null;
+  
+  try {
+    apiKey = await ChatService.getSetting('openai-key');
+  } catch {
+    // If no user key stored, fall back to environment variable
+    apiKey = process.env.OPENAI_API_KEY;
+  }
+
   if (!apiKey) {
-    console.error("Missing OPENAI_API_KEY environment variable");
+    console.error("No OpenAI API key configured");
     return new Response("Service unavailable", { status: 503 });
   }
 
@@ -30,7 +41,17 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid request format", { status: 400 });
   }
 
-  const { messages, webSearch, thinkHarder } = body;
+  const { messages, webSearch, thinkHarder, model } = body;
+
+  // Get selected model from request or settings, with fallback to default
+  let selectedModel = model;
+  if (!selectedModel) {
+    try {
+      selectedModel = await ChatService.getSetting('selected-model') || DEFAULT_MODEL;
+    } catch {
+      selectedModel = DEFAULT_MODEL;
+    }
+  }
 
   if (!Array.isArray(messages)) {
     return new Response("Messages array is required", { status: 400 });
@@ -52,7 +73,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: selectedModel,
         stream: true,
         messages: [{ role: "system", content: system }, ...messages],
       }),

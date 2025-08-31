@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import SettingsModal from "@/components/SettingsModal";
 import VoiceChat from "@/components/VoiceChat";
+import ModelSelector from "@/components/ModelSelector";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -69,6 +70,7 @@ export default function Page() {
   const [showSettings, setShowSettings] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [openaiKey, setOpenaiKey] = useState("");
+  const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
 
   // sidebar
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -99,6 +101,7 @@ export default function Page() {
   useEffect(() => {
     loadConversations();
     loadOpenAIKey();
+    loadSelectedModel();
   }, []);
 
   const loadOpenAIKey = async () => {
@@ -110,6 +113,31 @@ export default function Page() {
       }
     } catch (error) {
       console.error('Failed to load OpenAI key:', error);
+    }
+  };
+
+  const loadSelectedModel = async () => {
+    try {
+      const response = await fetch('/api/settings/selected-model');
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedModel(data.value || "gpt-4o-mini");
+      }
+    } catch (error) {
+      console.error('Failed to load selected model:', error);
+    }
+  };
+
+  const saveSelectedModel = async (modelId: string) => {
+    try {
+      await fetch('/api/settings/selected-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: modelId }),
+      });
+      setSelectedModel(modelId);
+    } catch (error) {
+      console.error('Failed to save selected model:', error);
     }
   };
 
@@ -232,7 +260,7 @@ export default function Page() {
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        body: JSON.stringify({ messages: next, webSearch, thinkHarder }),
+        body: JSON.stringify({ messages: next, webSearch, thinkHarder, model: selectedModel }),
       });
       if (!res.ok || !res.body) throw new Error("No stream");
 
@@ -264,7 +292,7 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, msgs, conversations, webSearch, thinkHarder, updateLastMessage, currentConversationId, createNewConversation, saveMessage]);
+  }, [input, loading, msgs, conversations, webSearch, thinkHarder, selectedModel, updateLastMessage, currentConversationId, createNewConversation, saveMessage]);
 
   /** Start/stop mic and transcribe with whisper-1 via /api/transcribe */
   async function toggleMic() {
@@ -444,7 +472,10 @@ export default function Page() {
       <section className="h-full bg-[rgb(var(--panel-2))] flex flex-col">
         {/* Header */}
         <header className="h-14 px-4 flex items-center justify-between">
-          <div className="font-medium tracking-tight">Chat</div>
+          <ModelSelector 
+            selectedModel={selectedModel} 
+            onModelChange={saveSelectedModel}
+          />
           
           {/* Voice Mode Toggle */}
           {openaiKey && (
