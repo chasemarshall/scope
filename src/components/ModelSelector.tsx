@@ -124,12 +124,12 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
             <div className="text-[11px] uppercase text-neutral-500 px-2 pb-2">
               Available Models
             </div>
-            <div className="max-h-60 overflow-y-auto">
+            <div className="max-h-60 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {models.map((model) => (
                 <button
                   key={model.id}
                   onClick={() => handleModelSelect(model.id)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/5 text-left text-sm transition-colors"
+                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 text-left text-sm transition-colors"
                 >
                   <div className="flex-1">
                     <div className="font-medium">
@@ -140,7 +140,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                     </div>
                   </div>
                   {selectedModel === model.id && (
-                    <Check size={16} className="text-green-500" />
+                    <Check size={16} className="text-green-500 flex-shrink-0" />
                   )}
                 </button>
               ))}

@@ -15,7 +15,6 @@ import {
   Settings,
 } from "lucide-react";
 import SettingsModal from "@/components/SettingsModal";
-import VoiceChat from "@/components/VoiceChat";
 import ModelSelector from "@/components/ModelSelector";
 
 interface ChatMessage {
@@ -68,7 +67,6 @@ export default function Page() {
   const [thinkHarder, setThinkHarder] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
   const [openaiKey, setOpenaiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("gpt-4o-mini");
 
@@ -476,22 +474,6 @@ export default function Page() {
             selectedModel={selectedModel} 
             onModelChange={saveSelectedModel}
           />
-          
-          {/* Voice Mode Toggle */}
-          {openaiKey && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setVoiceMode(!voiceMode)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                  voiceMode
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-neutral-700 hover:bg-neutral-600 text-neutral-200'
-                }`}
-              >
-                {voiceMode ? 'Voice Mode' : 'Text Mode'}
-              </button>
-            </div>
-          )}
         </header>
 
         {/* Messages */}
@@ -521,27 +503,7 @@ export default function Page() {
         <div className="pointer-events-none relative">
           <div className="pointer-events-auto mx-auto w-full max-w-3xl px-4 pb-5">
             
-            {/* Voice Chat Mode */}
-            {voiceMode && openaiKey && (
-              <div className="mb-4 flex justify-center">
-                <div className="bg-neutral-900/70 border border-[rgb(var(--border))] rounded-2xl p-4 shadow-lg">
-                  <VoiceChat
-                    apiKey={openaiKey}
-                    onTranscript={(text, isFinal) => {
-                      if (isFinal) {
-                        setInput((prev) => prev + text + ' ');
-                      }
-                    }}
-                    onError={(error) => {
-                      console.error('Voice chat error:', error);
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          
           {/* Text Composer */}
-          {!voiceMode && (
             <div
               className={[
                 "flex items-center gap-2 border border-[rgb(var(--border))] bg-neutral-900/70 p-2 shadow-lg",
@@ -629,7 +591,6 @@ export default function Page() {
                 <Send size={18} />
               </button>
             </div>
-          )}
 
           {/* Active badges (subtle blue) */}
           {(webSearch || thinkHarder) && (
