@@ -45,14 +45,18 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       setLoading(true);
       setError(null);
       
+      console.log('Fetching models from /api/models...');
       const response = await fetch('/api/models');
       const data = await response.json();
+      
+      console.log('Models API response:', { status: response.status, data });
       
       if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch models');
       }
       
-      setModels(data.models);
+      setModels(data.models || []);
+      console.log('Models set:', data.models?.length || 0, 'models');
     } catch (error) {
       console.error('Error fetching models:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch models');

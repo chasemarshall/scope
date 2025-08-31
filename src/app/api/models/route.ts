@@ -22,17 +22,22 @@ export async function GET(req: NextRequest) {
     
     try {
       apiKey = await ChatService.getSetting('openai-key');
-    } catch {
+      console.log('Retrieved API key from settings:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null');
+    } catch (error) {
+      console.log('Failed to get API key from settings:', error);
       // If no user key stored, fall back to environment variable
       apiKey = process.env.OPENAI_API_KEY ?? null;
+      console.log('Using environment API key:', apiKey ? `${apiKey.substring(0, 10)}...` : 'null');
     }
 
     if (!apiKey) {
+      console.log('No API key available');
       return NextResponse.json({ 
         error: 'No OpenAI API key configured. Please add your API key in settings.' 
       }, { status: 401 });
     }
 
+    console.log('Fetching models from OpenAI API...');
     const response = await fetch('https://api.openai.com/v1/models', {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -40,16 +45,22 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    console.log('OpenAI API response status:', response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.log('OpenAI API error response:', errorText);
+      
       if (response.status === 401) {
         return NextResponse.json({ 
           error: 'Invalid API key. Please check your OpenAI API key in settings.' 
         }, { status: 401 });
       }
-      throw new Error(`OpenAI API error: ${response.status}`);
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const data: OpenAIModelsResponse = await response.json();
+    console.log('Received models count:', data.data.length);
     
     // Filter for chat completion models and sort by ID
     const chatModels = data.data
@@ -70,6 +81,7 @@ export async function GET(req: NextRequest) {
         return a.id.localeCompare(b.id);
       });
 
+    console.log('Filtered chat models:', chatModels.map(m => m.id));
     return NextResponse.json({ models: chatModels });
   } catch (error) {
     console.error('Error fetching models:', error);
